@@ -1,0 +1,15 @@
+dotenv
+fastapi
+uvicorn
+pydantic
+agno
+openai
+sqlalchemy
+arxiv 
+pypdf
+ddgs
+googlesearch-python 
+pycountry
+google-search-results
+yfinance
+google-genai

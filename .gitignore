@@ -1,0 +1,13 @@
+# Track only the project files we want to publish.
+*
+!.gitignore
+!searchAI.py
+!requirements.txt
+!prompt.json
+!localdb/
+!localdb/**
+
+# Keep caches and secrets out even inside allowed folders.
+__pycache__/
+*.py[cod]
+.env
