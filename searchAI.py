@@ -14,7 +14,7 @@ from agno.tools.yfinance import YFinanceTools
 from agno.models.openrouter import OpenRouter
 from agno.models.google import Gemini
 from agno.tools.duckduckgo import DuckDuckGoTools
-from agno.tools.googlesearch import GoogleSearchTools
+from agno.tools.websearch import WebSearchTools
 from agno.tools.hackernews import HackerNewsTools
 from agno.db.sqlite import SqliteDb
 from uuid import uuid4
@@ -89,7 +89,7 @@ async def response_retrieval(agent_details: AgentDetails):  # Removed Path()
                 name="GoogleArxivAI",
                 model=Gemini(id="gemini-2.0-flash-001"),
                 role="Research academic papers and scholarly content",
-                tools=[GoogleSearchTools(), ArxivTools()],
+                tools=[WebSearchTools(backend="google"), ArxivTools()],
                 add_name_to_context=True, instructions= agent_config["GoogleArxivAI"]["instructions"], description = agent_config["GoogleArxivAI"]["description"]
             )
 
