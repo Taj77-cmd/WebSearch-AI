@@ -4,23 +4,38 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from typing import Optional, Literal
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from agno.agent import Agent
 from agno.team import Team
 from agno.tools.serpapi import SerpApiTools
 from agno.tools.arxiv import ArxivTools
 from agno.tools.yfinance import YFinanceTools
-from agno.models.openrouter import OpenRouter
 from agno.models.google import Gemini
 from agno.tools.duckduckgo import DuckDuckGoTools
-from agno.tools.websearch import WebSearchTools
+from agno.tools.googlesearch import GoogleSearchTools
 from agno.tools.hackernews import HackerNewsTools
 from agno.db.sqlite import SqliteDb
 from uuid import uuid4
 import json
+import os
+
+# Ensure the localdb directory exists
+os.makedirs("localdb", exist_ok=True)
+
+# Use a fresh DB file so Agno always creates a correct schema from scratch
+DB_FILE = "localdb/searchAI_v2.db"
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 """Models In Use:
         """
@@ -54,7 +69,7 @@ with open('prompt.json', 'r', encoding='utf-8') as file:
 @app.post("/chatModel", response_model=AgentResponse)
 async def response_retrieval(agent_details: AgentDetails):  # Removed Path()
     try:
-        db = SqliteDb(db_file="localdb/searchAI.db")
+        db = SqliteDb(db_file=DB_FILE)
 
         # Fix session_id handling
         session_id: str
@@ -65,8 +80,21 @@ async def response_retrieval(agent_details: AgentDetails):  # Removed Path()
 
         # Create agent
         if agent_details.best_toggle == 0:
-            agent = Agent(model=Gemini(id=agent_details.model, max_output_tokens=5000, temperature=0.5, top_p=0.3), 
-            name="SearchAI", instructions= agent_config["searchAI"]["instructions"], description = agent_config["searchAI"]["description"], db=db, session_id=session_id, user_id=agent_details.user_id, enable_agentic_memory=True, enable_user_memories=True,read_chat_history=True, num_history_runs=5, add_history_to_context=True, markdown=True, tools=[SerpApiTools(api_key=os.getenv("SERPAPI_API_KEY")), ArxivTools(), YFinanceTools()], debug_mode=True)
+            agent = Agent(
+                model=Gemini(id=agent_details.model, max_output_tokens=5000, temperature=0.5, top_p=0.3),
+                name="SearchAI",
+                instructions=agent_config["searchAI"]["instructions"],
+                description=agent_config["searchAI"]["description"],
+                db=db,
+                session_id=session_id,
+                user_id=agent_details.user_id,
+                read_chat_history=True,
+                num_history_runs=5,
+                add_history_to_context=True,
+                markdown=True,
+                tools=[SerpApiTools(api_key=os.getenv("SERPAPI_API_KEY")), ArxivTools(), YFinanceTools()],
+                debug_mode=True,
+            )
 
         elif agent_details.best_toggle == 1:
             # **Change logic try making different task agents.**
@@ -89,7 +117,7 @@ async def response_retrieval(agent_details: AgentDetails):  # Removed Path()
                 name="GoogleArxivAI",
                 model=Gemini(id="gemini-2.0-flash-001"),
                 role="Research academic papers and scholarly content",
-                tools=[WebSearchTools(backend="google"), ArxivTools()],
+                tools=[GoogleSearchTools(), ArxivTools()],
                 add_name_to_context=True, instructions= agent_config["GoogleArxivAI"]["instructions"], description = agent_config["GoogleArxivAI"]["description"]
             )
 
@@ -122,13 +150,13 @@ async def response_retrieval(agent_details: AgentDetails):  # Removed Path()
                 db=db,
                 add_history_to_context=True,
                 num_history_runs=3,
-                add_session_state_to_context=True,  # Required so the agent is aware of the session state
+                add_session_state_to_context=True,
                 enable_agentic_state=True,
-                enable_user_memories=True,
-                instructions= agent_config["SelectorAI"]["instructions"], description = agent_config["SelectorAI"]["description"],
+                instructions=agent_config["SelectorAI"]["instructions"],
+                description=agent_config["SelectorAI"]["description"],
                 delegate_task_to_all_members=True,
                 markdown=True,
-                debug_mode=True
+                debug_mode=True,
             )
          
         # Run the agent
@@ -206,6 +234,158 @@ async def response_retrieval(agent_details: AgentDetails):  # Removed Path()
         raise HTTPException(status_code=400, detail="Invalid JSON in prompt.json")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@app.websocket("/ws/chat")
+async def websocket_chat(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_text()
+            payload = json.loads(data)
+
+            user_id = payload.get("user_id", 1)
+            raw_session_id = payload.get("session_id")
+            session_id = str(uuid4()) if (not raw_session_id or raw_session_id == "0") else raw_session_id
+            model = payload.get("model", "gemini-2.0-flash-001")
+            prompt = payload.get("prompt", "")
+            best_toggle = payload.get("best_toggle", 0)
+
+            db = SqliteDb(db_file=DB_FILE)
+
+            if best_toggle == 0:
+                agent = Agent(
+                    model=Gemini(id=model, max_output_tokens=5000, temperature=0.5, top_p=0.3),
+                    name="SearchAI",
+                    instructions=agent_config["searchAI"]["instructions"],
+                    description=agent_config["searchAI"]["description"],
+                    db=db,
+                    session_id=session_id,
+                    user_id=user_id,
+                    read_chat_history=True,
+                    num_history_runs=5,
+                    add_history_to_context=True,
+                    markdown=True,
+                    tools=[SerpApiTools(api_key=os.getenv("SERPAPI_API_KEY")), ArxivTools(), YFinanceTools()],
+                    debug_mode=True,
+                )
+            else:
+                reddit_researcher = Agent(
+                    name="DuckDuckGoAI",
+                    model=Gemini(id="gemini-2.0-flash-001"),
+                    tools=[DuckDuckGoTools()],
+                    add_name_to_context=True,
+                    instructions=agent_config["DuckDuckGoAI"]["instructions"],
+                    description=agent_config["DuckDuckGoAI"]["description"]
+                )
+                hackernews_researcher = Agent(
+                    name="HackerNewsAI",
+                    model=Gemini(id="gemini-2.0-flash-001"),
+                    role="Research a topic on HackerNews.",
+                    tools=[HackerNewsTools()],
+                    add_name_to_context=True,
+                    instructions=agent_config["HackerNewsAI"]["instructions"],
+                    description=agent_config["HackerNewsAI"]["description"]
+                )
+                academic_paper_researcher = Agent(
+                    name="GoogleArxivAI",
+                    model=Gemini(id="gemini-2.0-flash-001"),
+                    role="Research academic papers and scholarly content",
+                    tools=[GoogleSearchTools(), ArxivTools()],
+                    add_name_to_context=True,
+                    instructions=agent_config["GoogleArxivAI"]["instructions"],
+                    description=agent_config["GoogleArxivAI"]["description"]
+                )
+                twitter_researcher = Agent(
+                    name="YFinanceAI",
+                    model=Gemini(id="gemini-2.0-flash-001"),
+                    role="Research trending discussions and real-time updates",
+                    tools=[YFinanceTools()],
+                    add_name_to_context=True,
+                    instructions=agent_config["YFinanceAI"]["instructions"],
+                    description=agent_config["YFinanceAI"]["description"]
+                )
+                SerpAPIAgent = Agent(
+                    name="SerpAPIAgent",
+                    model=Gemini(id="gemini-2.0-flash-001"),
+                    role="Research trending discussions and real-time updates",
+                    tools=[SerpApiTools(api_key=os.getenv("SERPAPI_API_KEY"))],
+                    add_name_to_context=True,
+                    instructions=agent_config["SerpAPIAgent"]["instructions"],
+                    description=agent_config["SerpAPIAgent"]["description"]
+                )
+                agent = Team(
+                    name="SelectorAI",
+                    model=Gemini(id="gemini-2.0-flash-001"),
+                    members=[
+                        reddit_researcher,
+                        hackernews_researcher,
+                        academic_paper_researcher,
+                        twitter_researcher,
+                        SerpAPIAgent
+                    ],
+                    db=db,
+                    add_history_to_context=True,
+                    num_history_runs=3,
+                    add_session_state_to_context=True,
+                    enable_agentic_state=True,
+                    instructions=agent_config["SelectorAI"]["instructions"],
+                    description=agent_config["SelectorAI"]["description"],
+                    delegate_task_to_all_members=True,
+                    markdown=True,
+                    debug_mode=True,
+                )
+
+            await websocket.send_json({"type": "start", "session_id": session_id})
+
+            accumulated = ""
+            try:
+                stream_res = agent.run(prompt, stream=True)
+                for chunk in stream_res:
+                    chunk_text = getattr(chunk, 'content', str(chunk)) if chunk else ""
+                    if chunk_text:
+                        accumulated += chunk_text
+                        await websocket.send_json({"type": "token", "content": chunk_text})
+            except Exception as stream_err:
+                print(f"Streaming error fallback to arun: {stream_err}")
+                resp = await agent.arun(prompt)
+                accumulated = getattr(resp, 'content', str(resp))
+                await websocket.send_json({"type": "token", "content": accumulated})
+
+            final_content = []
+            links = []
+            if "Sources and references:" in accumulated:
+                final_content = accumulated.split("Sources and references:")
+            elif "📚 Sources" in accumulated:
+                final_content = accumulated.split("📚 Sources")
+            else:
+                final_content.append(accumulated)
+
+            if len(final_content) > 1 and len(final_content[1]) > 0:
+                raw_sources = final_content[1].split(") | [") if ") | [" in final_content[1] else [final_content[1]]
+                for src in raw_sources:
+                    if "(" in src:
+                        parts = src.split("(")
+                        title = parts[0].replace("[", "").replace("]", "").strip()
+                        url = parts[1].replace(")", "").strip()
+                        links.append({"title": title, "url": url})
+
+            await websocket.send_json({
+                "type": "done",
+                "response": final_content[0] if final_content else accumulated,
+                "session_id": session_id,
+                "user_id": user_id,
+                "links": links
+            })
+
+    except WebSocketDisconnect:
+        print("Client disconnected from /ws/chat")
+    except Exception as e:
+        print(f"WebSocket exception: {e}")
+        try:
+            await websocket.send_json({"type": "error", "error": str(e)})
+        except:
+            pass
 
 
 @app.post("/prompt-rephraser-v3")

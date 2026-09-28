@@ -1,0 +1,518 @@
+# SearchAI Frontend - Complete Technical Documentation
+
+## Table of Contents
+1. [Overview](#overview)
+2. [Technology Stack & Rationale](#technology-stack--rationale)
+3. [Architecture & Data Flow](#architecture--data-flow)
+4. [State Management](#state-management)
+5. [Backend Communication](#backend-communication)
+6. [Build System](#build-system)
+7. [Key Components](#key-components)
+8. [Development Workflow](#development-workflow)
+9. [Production Deployment](#production-deployment)
+
+---
+
+## Overview
+
+The SearchAI frontend is a **Single-Page Application (SPA)** built with **React 18**, **TypeScript**, and **Vite**. It provides a terminal-themed, keyboard-driven interface for interacting with a multi-agent AI research backend via WebSocket streaming.
+
+**Design Philosophy**: Developer-first, keyboard-centric, minimal latency, maximum information density.
+
+---
+
+## Technology Stack & Rationale
+
+### 1. React 18 — UI Framework
+**Why React?**
+- **Mature ecosystem**: Largest component library ecosystem, extensive tooling
+- **Concurrent features**: `useTransition`, `useDeferredValue` for responsive UI during heavy renders
+- **Server Components ready**: Future-proof for React Server Components migration
+- **Team familiarity**: Most developers know React
+
+**Alternatives Considered:**
+| Alternative | Why Not Chosen |
+|-------------|----------------|
+| Vue 3 | Smaller ecosystem, team less familiar |
+| Svelte/SvelteKit | Immature ecosystem for complex apps, no major corporate backing |
+| SolidJS | Smaller community, fewer third-party integrations |
+| Plain JS + Web Components | No reactive state management, verbose for complex UIs |
+
+**Why React 18 specifically?** Automatic batching, transitions, and improved suspense make streaming UIs smoother.
+
+---
+
+### 2. TypeScript — Type-Safe JavaScript
+**Why TypeScript?**
+- **Catches bugs at compile time**: `session.id` vs `session.Id` caught before runtime
+- **Self-documenting**: Types serve as living documentation
+- **Refactoring safety**: Rename `session_id` → `sessionId` across 50 files confidently
+- **IDE support**: IntelliSense, go-to-definition, inline errors
+
+**Alternatives Considered:**
+| Alternative | Why Not Chosen |
+|-------------|----------------|
+| JSDoc + JS | Verbose, incomplete inference, no compile-time enforcement |
+| Flow | Abandoned by Meta, poor tooling support |
+| No types | Technical debt accumulates fast in complex state apps |
+
+**Configuration**: Strict mode enabled (`strict: true` in tsconfig.json) — catches `null`/`undefined`, unused vars, implicit `any`.
+
+---
+
+### 3. Vite — Build Tool & Dev Server
+**Why Vite?**
+- **Instant dev server startup**: No bundling during dev — native ESM in browser
+- **Sub-millisecond HMR**: esbuild (Go-based) transforms TS/JSX in ~1ms
+- **Optimized production builds**: Rollup under the hood, tree-shaking, code-splitting
+- **Plugin ecosystem**: React, Tailwind, TypeScript all first-class
+
+**Alternatives Considered:**
+| Alternative | Why Not Chosen |
+|-------------|----------------|
+| Webpack (Create React App) | Slow startup, slow HMR, complex config, deprecated |
+| Next.js | Overkill for SPA (no SSR needed), heavier bundle |
+| Parcel | Less mature plugin ecosystem, slower than esbuild |
+| esbuild directly | No React Fast Refresh, no CSS handling, no HTML entry |
+
+**Vite Config Highlights:**
+```ts
+// vite.config.ts
+proxy: {
+  '/chatModel': 'http://localhost:8000',
+  '/ws': { target: 'http://localhost:8000', ws: true },
+}
+```
+
+---
+
+### 4. Tailwind CSS — Utility-First Styling
+**Why Tailwind?**
+- **Design system in code**: `tokens.css` defines CSS variables → Tailwind generates utilities
+- **No context switching**: Styles in same file as component (`className="flex items-center gap-2"`)
+- **Consistent design**: Constrained spacing/color scale prevents design drift
+- **PurgeCSS built-in**: Only used classes in production bundle (~10KB CSS)
+- **Dark mode**: `dark:` variant + CSS variables = instant theme switching
+
+**Alternatives Considered:**
+| Alternative | Why Not Chosen |
+|-------------|----------------|
+| CSS Modules | Scoped but no design system, verbose, no dark mode helper |
+| Styled Components / Emotion | Runtime overhead, CSS-in-JS complexity, larger bundle |
+| Plain CSS + Variables | No utility classes, repetitive, hard to maintain consistency |
+| Bootstrap / Material UI | Opinionated components, hard to customize to terminal aesthetic |
+
+**Our Design System** (`src/styles/tokens.css`):
+```css
+:root {
+  --terminal-bg: #0d1117;
+  --terminal-accent: #3fb950;
+  --font-mono: 'JetBrains Mono', monospace;
+  /* ... 50+ design tokens ... */
+}
+```
+Tailwind reads these via `tailwind.config.js` → generates `bg-terminal-bg`, `text-terminal-accent`, etc.
+
+---
+
+### 5. Zustand — Global State Management
+**Why Zustand?**
+- **Minimal API**: `create((set) => ({ state, actions }))` — ~1KB
+- **No Provider wrapper**: Store lives outside React, no Context API
+- **Selective subscription**: Components re-render only on used state slices
+- **Middleware**: `persist` for localStorage, `devtools` for Redux DevTools
+- **TypeScript first**: Full inference without generics boilerplate
+
+**Alternatives Considered:**
+| Alternative | Why Not Chosen |
+|-------------|----------------|
+| Redux Toolkit | Boilerplate (slices, thunks, providers), overkill for this app size |
+| React Context + useReducer | Prop drilling avoided but re-renders all consumers on any change |
+| Jotai / Recoil | Atom model adds mental overhead, larger bundles |
+| MobX | Mutable state, decorator syntax, less React-idiomatic |
+
+**Our Stores:**
+```ts
+// useSessionStore.ts — Sessions, messages, optimistic updates
+// useUIStore.ts — Sidebar, theme, active session (persisted)
+```
+
+---
+
+### 6. TanStack Query (React Query) — Server State
+**Why TanStack Query?**
+- **Separation of concerns**: Server state ≠ client state
+- **Caching & deduping**: Same session requested twice = one fetch
+- **Background refetching**: Stale data updates silently
+- **Optimistic updates**: Immediate UI, rollback on error
+- **DevTools**: Query timeline, cache inspection
+
+**Alternatives Considered:**
+| Alternative | Why Not Chosen |
+|-------------|----------------|
+| SWR | Similar but less flexible mutations, no devtools |
+| RTK Query | Tied to Redux, more boilerplate |
+| Manual fetch + useEffect | Reinventing caching, race conditions, no deduping |
+
+**Usage**: `useMutation` for `sendMessage`, `invalidateQueries` on session switch.
+
+---
+
+### 7. Lucide React — Icon Library
+**Why Lucide?**
+- **Tree-shakeable**: Only used icons in bundle (`import { Plus } from 'lucide-react'`)
+- **Consistent design**: 24x24 grid, 1.5px stroke, unified style
+- **1000+ icons**: Covers all UI needs
+- **React-native**: No wrapper needed, TypeScript types included
+
+**Alternatives Considered:**
+| Alternative | Why Not Chosen |
+|-------------|----------------|
+| Heroicons | Fewer icons, two styles (outline/solid) but less consistent |
+| React Icons (wrappers) | Bundle size (includes all libs), inconsistent styles |
+| Custom SVG | Maintenance burden, no design system |
+
+---
+
+### 8. Framer Motion — Animations
+**Why Framer Motion?**
+- **Declarative**: `<motion.div animate={{ opacity: 1 }} />`
+- **Layout animations**: `layout` prop animates position/size changes automatically
+- **Gesture support**: Drag, hover, tap with spring physics
+- **Reduced motion**: Respects `prefers-reduced-motion` automatically
+- **Performance**: GPU-accelerated, minimal main-thread work
+
+**Alternatives Considered:**
+| Alternative | Why Not Chosen |
+|-------------|----------------|
+| CSS animations | Complex orchestration, no layout animation, JS-driven state hard |
+| React Transition Group | Low-level, manual, no spring physics |
+| Anime.js / GSAP | Imperative API, larger bundle, not React-native |
+
+**Usage**: Fade-in, slide-in, pulse, cursor blink, command palette animation.
+
+---
+
+### 9. Sonner — Toast Notifications
+**Why Sonner?**
+- **Promise-based API**: `toast.promise(promise, { loading, success, error })`
+- **Accessible**: ARIA live regions, keyboard dismiss, screen reader support
+- **Stackable**: Multiple toasts, auto-dismiss, swipe to dismiss
+- **Themeable**: CSS variables match our design system
+- **Lightweight**: ~3KB gzipped
+
+**Alternatives Considered:**
+| Alternative | Why Not Chosen |
+|-------------|----------------|
+| react-hot-toast | Less accessible, no promise API, limited customization |
+| react-toastify | Larger, older API, less modern styling |
+| Custom | Reinventing accessibility, stacking, animation |
+
+---
+
+### 10. React Markdown + rehype-pretty-code — Markdown Rendering
+**Why this combo?**
+- **react-markdown**: Safe, extensible, React-native (no dangerouslySetInnerHTML)
+- **rehype-pretty-code**: Shiki-based syntax highlighting, themeable, line numbers
+- **GFM support**: Tables, strikethrough, task lists via `remark-gfm`
+
+**Alternatives Considered:**
+| Alternative | Why Not Chosen |
+|-------------|----------------|
+| marked + DOMPurify | Security risk if misconfigured, not React-native |
+| MDX | Overkill (compiles to components), build complexity |
+| Simple textarea | No rendering, no code highlighting |
+
+---
+
+## Architecture & Data Flow
+
+### Component Hierarchy
+```
+App (root)
+├── QueryClientProvider (TanStack Query)
+├── Toaster (Sonner)
+├── AppShell
+│   ├── Header (model selector, team toggle, theme, new session)
+│   ├── Sidebar
+│   │   └── SessionList → SessionItem (rename, delete, select)
+│   ├── ChatView
+│   │   ├── MessageList → MessageBubble → MessageContent (markdown)
+│   │   ├── StreamingResponse (live tokens)
+│   │   └── InputArea (textarea, send, rephrase)
+│   ├── Footer (connection status, model, shortcuts)
+│   ├── CommandPalette (⌘K)
+│   ├── NewSessionModal
+│   ├── PromptRephraser
+│   └── Visual Effects (MatrixRain, Scanlines)
+```
+
+### Data Flow: User Sends Message
+```
+1. User types in InputArea → onSendMessage(prompt)
+2. useChat.sendMessage(prompt)
+   a. Creates user Message → addMessageToStore + saveMessageToStorage
+   b. Opens WebSocket to ws://localhost:8000/ws/chat
+   c. Sends AgentDetails { user_id, session_id, model, prompt, best_toggle }
+   d. On token: updates streamingState (React state)
+   e. On done: handleFinalResponse → saves assistant Message
+3. Fallback: HTTP POST /chatModel if WebSocket fails
+4. TanStack Query invalidates message queries → UI updates
+```
+
+---
+
+## State Management
+
+### Three Layers of State
+
+| Layer | Tool | Scope | Persistence |
+|-------|------|-------|-------------|
+| **Global Client State** | Zustand | Sessions, messages, UI prefs | localStorage (persist middleware) |
+| **Server State** | TanStack Query | API responses, mutations | Memory (cache) |
+| **Ephemeral UI State** | React useState | Streaming content, modals, inputs | None (reset on unmount) |
+
+### Zustand Stores
+
+**useSessionStore** (`src/stores/useSessionStore.ts`)
+```ts
+{
+  sessions: Session[],
+  messages: Record<sessionId, Message[]>,
+  optimisticMessages: Record<sessionId, Message[]>,
+  // Actions:
+  setSessions, addSession, updateSession, deleteSession, deleteAllSessions,
+  setMessages, addMessage, updateMessage, clearSession,
+  addOptimisticMessage, removeOptimisticMessage, clearOptimisticMessages
+}
+```
+
+**useUIStore** (`src/stores/useUIStore.ts`)
+```ts
+{
+  sidebarOpen, sidebarCollapsed, theme, activeSessionId,
+  inputHeight, commandPaletteOpen,
+  // Actions (persisted: theme, sidebarCollapsed)
+}
+```
+
+### localStorage Schema
+```
+searchai_sessions → Session[]           // All sessions
+searchai_msgs_{sessionId} → Message[]  // Per-session messages
+searchai_user_id → number               // User identifier
+searchai_theme → 'dark' | 'light' | 'system'
+searchai_ui → { theme, sidebarCollapsed }  // UI store persist
+```
+
+---
+
+## Backend Communication
+
+### HTTP (REST) — `src/lib/api.ts`
+```ts
+POST /chatModel           // Non-streaming chat (fallback)
+POST /prompt-rephraser-v3 // Prompt optimization
+GET  /health              // Health check
+```
+
+### WebSocket — `src/lib/websocket.ts`
+```ts
+WS /ws/chat
+```
+**Protocol:**
+```
+Client → Server: { user_id, session_id, model, prompt, best_toggle }
+Server → Client: { type: 'token', content: '...' } (streaming)
+Server → Client: { type: 'done', response, session_id, links } (final)
+Server → Client: { type: 'error', error } (error)
+```
+
+### Why WebSocket + HTTP Fallback?
+- **WebSocket**: Low latency, true streaming, binary support
+- **HTTP Fallback**: Works through restrictive proxies, simpler debugging
+- **Auto-fallback**: If WebSocket fails before first token → retry via HTTP
+
+---
+
+## Build System
+
+### Development (`npm run dev`)
+```
+Vite Dev Server
+├── Serves index.html
+├── Transpiles TS/JSX on-demand via esbuild
+├── HMR via WebSocket (full reload only on config change)
+├── Proxies /api, /ws to backend:8000
+└── CSS via PostCSS (Tailwind + autoprefixer)
+```
+
+### Production (`npm run build`)
+```
+Rollup Bundle
+├── Entry: src/main.tsx
+├── Tree-shaking (dead code elimination)
+├── Code splitting (vendor chunks, dynamic imports)
+├── Minification (terser)
+├── Hash filenames (cache busting): index.abc123.js
+├── CSS extraction + minification
+└── Output: dist/
+```
+
+### Type Checking
+```bash
+npx tsc --noEmit  # Runs in CI, not during dev (speed)
+```
+
+---
+
+## Key Components
+
+### 1. App.tsx — Root Orchestrator
+- Session lifecycle (create, select, delete, deleteAll)
+- Keyboard shortcuts registration
+- Model/team mode sync with active session
+- Wires all stores and hooks together
+
+### 2. useChat.ts — Chat Engine
+- WebSocket connection management
+- Streaming state machine (connecting → streaming → done/error)
+- Optimistic message rendering
+- Automatic HTTP fallback
+- Source extraction from response
+
+### 3. useSessions.ts — Session CRUD
+- Loads sessions from localStorage on mount
+- createSession → generates UUID, saves to storage + Zustand
+- deleteSession / deleteAllSessions → removes from storage + Zustand
+- Message count sync
+
+### 4. SessionList/SessionItem — Session UI
+- Grouped by date (Today, Yesterday, Older)
+- Search filtering
+- Inline rename (double-click or edit button)
+- Confirm-before-delete pattern
+- Keyboard accessible
+
+### 5. ChatView — Main Chat Interface
+- Two states: Welcome (no messages) vs MessageList
+- Streaming response rendering
+- Suggestion chips for empty state
+- InputArea delegation
+
+### 6. CommandPalette — ⌘K Interface
+- Fuzzy search over commands + recent sessions
+- Keyboard navigation (↑↓, Enter, Esc)
+- Categories: Actions, Navigation, Sessions, Preferences
+- New: "Delete All Sessions" command
+
+### 7. MatrixRain / Scanlines — Visual Effects
+- Canvas-based, requestAnimationFrame (24fps capped)
+- Respects `prefers-reduced-motion`
+- Low opacity (0.05) — subtle ambiance
+
+---
+
+## Development Workflow
+
+### Starting Development
+```bash
+# Terminal 1: Backend
+cd /d/temp
+source env/bin/activate
+python -m uvicorn searchAI:app --reload --port 8000
+
+# Terminal 2: Frontend
+cd /d/temp/searchai-frontend
+npm run dev
+```
+
+### Code Quality
+```bash
+npm run lint        # ESLint (React hooks, TypeScript, unused vars)
+npx tsc --noEmit    # TypeScript compile check
+npm run build       # Production build test
+```
+
+### Adding a New Feature
+1. **Types first**: Define interfaces in `src/types/`
+2. **Storage layer**: Add helpers in `src/lib/storage.ts`
+3. **State layer**: Add actions in `src/stores/useSessionStore.ts`
+4. **Hook layer**: Expose via `src/hooks/useSessions.ts`
+5. **UI layer**: Build components in `src/components/`
+6. **Wire in App.tsx**: Connect actions to UI
+
+---
+
+## Production Deployment
+
+### Frontend (Static Hosting)
+```bash
+npm run build
+# Deploy dist/ to:
+# - Vercel / Netlify / Cloudflare Pages (recommended)
+# - Nginx + static files
+# - AWS S3 + CloudFront
+# - Docker: nginx:alpine serving dist/
+```
+
+**Nginx Config:**
+```nginx
+server {
+  listen 80;
+  root /var/www/searchai/dist;
+  index index.html;
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+  location /api/ {
+    proxy_pass http://backend:8000;
+  }
+  location /ws {
+    proxy_pass http://backend:8000;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+  }
+}
+```
+
+### Backend (Container/VM)
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+CMD ["uvicorn", "searchAI:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+### Environment Variables (Production)
+```bash
+# Backend
+GEMINI_API_KEY=prod_key
+SERPAPI_API_KEY=prod_key
+DB_FILE=/data/searchAI.db  # Persistent volume
+
+# Frontend (build-time)
+VITE_API_URL=https://api.yourdomain.com
+```
+
+---
+
+## Summary: Why This Stack Works for SearchAI
+
+| Requirement | Solution |
+|-------------|----------|
+| **Real-time streaming** | WebSocket + React state + TanStack Query mutations |
+| **Complex session state** | Zustand (global) + localStorage (persistence) |
+| **Keyboard-driven UX** | Custom hooks + Command Palette + shortcuts |
+| **Terminal aesthetic** | Tailwind + CSS variables design system |
+| **Type safety** | TypeScript strict mode across boundary |
+| **Fast iteration** | Vite HMR + esbuild (sub-second feedback) |
+| **Maintainable** | Colocated components, single-responsibility hooks |
+| **Accessible** | Sonner (toasts), Lucide (icons), semantic HTML |
+
+---
+
+*Document generated for SearchAI v2.0 — Terminal Research Interface*

@@ -1,13 +1,59 @@
-# Track only the project files we want to publish.
-*
-!.gitignore
-!searchAI.py
-!requirements.txt
-!prompt.json
-!localdb/
-!localdb/**
+# ===== DEPENDENCIES =====
+node_modules/
 
-# Keep caches and secrets out even inside allowed folders.
-__pycache__/
-*.py[cod]
+# ===== BUILD OUTPUTS =====
+dist/
+build/
+*.local
+
+# ===== ENVIRONMENT & SECRETS =====
 .env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# ===== IDE / EDITOR =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ===== OS FILES =====
+.DS_Store
+Thumbs.db
+
+# ===== LOGS =====
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ===== TESTING / COVERAGE =====
+coverage/
+.nyc_output/
+
+# ===== CACHE =====
+.cache/
+.vite/
+.turbo/
+*.tsbuildinfo
+
+# ===== TYPESCRIPT =====
+*.tsbuildinfo
+
+# ===== BACKEND SPECIFIC =====
+env/
+__pycache__/
+*.pyc
+localdb/
+*.db
+*.sqlite
+*.sqlite3
+
+# ===== MISC =====
+*.pem
+.vercel
+.netlify

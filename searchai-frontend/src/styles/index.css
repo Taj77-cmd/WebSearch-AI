@@ -1,0 +1,325 @@
+@import './tokens.css';
+@import './animations.css';
+@import './markdown.css';
+@import './scrollbar.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply h-full scroll-smooth;
+  }
+
+  body {
+    @apply h-full bg-terminal-bg text-terminal-text font-sans antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /* Terminal background pattern */
+  body::before {
+    content: '';
+    @apply fixed inset-0 pointer-events-none opacity-[0.02];
+    background-image:
+      linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px);
+    background-size: 40px 40px;
+    z-index: -1;
+  }
+
+  /* Scanlines overlay (subtle) */
+  .scanlines::after {
+    content: '';
+    @apply fixed inset-0 pointer-events-none z-50 opacity-[0.03];
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.15),
+      rgba(0, 0, 0, 0.15) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    animation: scanline 8s linear infinite;
+  }
+
+  /* Matrix rain background (optional) */
+  .matrix-bg {
+    @apply fixed inset-0 pointer-events-none z-0 opacity-[0.02] overflow-hidden;
+  }
+}
+
+@layer components {
+  /* Terminal button variants */
+  .btn-terminal {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2
+      font-mono text-sm font-medium
+      bg-transparent border border-terminal-border
+      text-terminal-text hover:bg-terminal-accent-bg hover:border-terminal-accent
+      rounded-lg transition-all duration-200
+      focus:outline-none focus-visible:ring-2 focus-visible:ring-terminal-accent
+      disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-terminal-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2
+      font-mono text-sm font-medium
+      bg-terminal-accent border border-terminal-accent
+      text-terminal-text-inverse hover:bg-terminal-accent-secondary hover:border-terminal-accent-secondary
+      rounded-lg transition-all duration-200
+      focus:outline-none focus-visible:ring-2 focus-visible:ring-terminal-accent
+      disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-terminal-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-3 py-1.5
+      font-mono text-sm
+      bg-transparent border-none
+      text-terminal-text-secondary hover:text-terminal-text hover:bg-terminal-surface
+      rounded-lg transition-all duration-200
+      focus:outline-none focus-visible:ring-2 focus-visible:ring-terminal-accent;
+  }
+
+  .btn-terminal-danger {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2
+      font-mono text-sm font-medium
+      bg-transparent border border-terminal-error
+      text-terminal-error hover:bg-terminal-error/10 hover:border-terminal-error
+      rounded-lg transition-all duration-200
+      focus:outline-none focus-visible:ring-2 focus-visible:ring-terminal-error
+      disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Terminal input */
+  .input-terminal {
+    @apply w-full px-4 py-3
+      font-mono text-base
+      bg-terminal-surface border border-terminal-border
+      text-terminal-text placeholder-terminal-text-dim
+      rounded-lg transition-all duration-200
+      focus:outline-none focus:border-terminal-accent focus:ring-2 focus:ring-terminal-accent/20
+      disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .textarea-terminal {
+    @apply w-full px-4 py-3
+      font-mono text-base
+      bg-terminal-surface border border-terminal-border
+      text-terminal-text placeholder-terminal-text-dim
+      rounded-lg transition-all duration-200 resize-none
+      focus:outline-none focus:border-terminal-accent focus:ring-2 focus:ring-terminal-accent/20
+      disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Terminal select */
+  .select-terminal {
+    @apply px-3 py-2
+      font-mono text-sm
+      bg-terminal-surface border border-terminal-border
+      text-terminal-text
+      rounded-lg transition-all duration-200 appearance-none
+      focus:outline-none focus:border-terminal-accent focus:ring-2 focus:ring-terminal-accent/20
+      disabled:opacity-50 disabled:cursor-not-allowed;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%238b949e' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 8px center;
+    background-repeat: no-repeat;
+    background-size: 16px;
+    padding-right: 32px;
+  }
+
+  /* Terminal card */
+  .card-terminal {
+    @apply bg-terminal-surface border border-terminal-border rounded-xl
+      shadow-lg backdrop-blur-sm;
+  }
+
+  .card-terminal-hover {
+    @apply card-terminal hover:border-terminal-accent-border hover:shadow-glow transition-all duration-300;
+  }
+
+  /* Terminal badge */
+  .badge-terminal {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5
+      font-mono text-xs font-medium
+      bg-terminal-surface border border-terminal-border
+      text-terminal-text-secondary rounded-full;
+  }
+
+  .badge-terminal-accent {
+    @apply badge-terminal bg-terminal-accent-bg border-terminal-accent-border text-terminal-accent;
+  }
+
+  .badge-terminal-success {
+    @apply badge-terminal bg-terminal-success/10 border-terminal-success/30 text-terminal-success;
+  }
+
+  .badge-terminal-warning {
+    @apply badge-terminal bg-terminal-warning/10 border-terminal-warning/30 text-terminal-warning;
+  }
+
+  .badge-terminal-error {
+    @apply badge-terminal bg-terminal-error/10 border-terminal-error/30 text-terminal-error;
+  }
+
+  /* Terminal divider */
+  .divider-terminal {
+    @apply h-px bg-terminal-border border-none;
+  }
+
+  /* Terminal tooltip */
+  .tooltip-terminal {
+    @apply absolute z-tooltip px-3 py-2
+      font-mono text-xs
+      bg-terminal-surface-elevated border border-terminal-border
+      text-terminal-text rounded-lg shadow-lg
+      animate-fade-in;
+  }
+
+  /* Terminal avatar */
+  .avatar-terminal {
+    @apply w-8 h-8 rounded-full font-mono text-xs font-semibold
+      flex items-center justify-center
+      bg-terminal-accent-bg border border-terminal-accent-border
+      text-terminal-accent select-none;
+  }
+
+  .avatar-terminal-user {
+    @apply w-8 h-8 rounded-full font-mono text-xs font-semibold
+      flex items-center justify-center
+      bg-terminal-info/10 border border-terminal-info/30
+      text-terminal-info select-none;
+  }
+
+  /* Terminal prompt prefix */
+  .prompt-prefix {
+    @apply font-mono text-sm text-terminal-accent select-none mr-2 whitespace-nowrap;
+  }
+
+  /* Terminal cursor */
+  .terminal-cursor {
+    @apply inline-block w-1 h-5 bg-terminal-accent animate-cursor align-middle ml-0.5;
+  }
+
+  /* Terminal header */
+  .header-terminal {
+    @apply h-[var(--header-height)] bg-terminal-surface/80 backdrop-blur-lg
+      border-b border-terminal-border
+      flex items-center justify-between px-4;
+  }
+
+  /* Terminal footer */
+  .footer-terminal {
+    @apply h-[var(--footer-height)] bg-terminal-surface/80 backdrop-blur-lg
+      border-t border-terminal-border
+      flex items-center justify-between px-4
+      font-mono text-xs text-terminal-text-dim;
+  }
+
+  /* Terminal sidebar */
+  .sidebar-terminal {
+    @apply w-[var(--sidebar-width)] bg-terminal-surface
+      border-r border-terminal-border
+      flex flex-col overflow-hidden
+      transition-all var(--transition-base);
+  }
+
+  .sidebar-terminal-collapsed {
+    @apply w-[var(--sidebar-collapsed-width)];
+  }
+
+  /* Terminal scroll area */
+  .scroll-area-terminal {
+    @apply flex-1 overflow-y-auto scrollbar-thin;
+  }
+
+  /* Terminal modal overlay */
+  .modal-overlay {
+    @apply fixed inset-0 bg-black/60 backdrop-blur-sm z-modal
+      animate-fade-in;
+  }
+
+  .modal-content {
+    @apply fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2
+      bg-terminal-surface-elevated border border-terminal-border
+      rounded-xl shadow-lg z-modal max-h-[90vh] max-w-[90vw]
+      animate-slide-in-bottom;
+  }
+
+  /* Terminal command palette */
+  .command-palette {
+    @apply fixed top-1/4 left-1/2 -translate-x-1/2
+      bg-terminal-surface-elevated border border-terminal-border
+      rounded-xl shadow-lg z-command-palette w-full max-w-2xl
+      animate-slide-in-bottom;
+  }
+
+  /* Terminal empty state */
+  .empty-state {
+    @apply flex flex-col items-center justify-center h-full px-8 text-center;
+  }
+
+  .empty-state-icon {
+    @apply w-16 h-16 text-terminal-text-dim/50 mb-6 animate-pulse-glow;
+  }
+
+  .empty-state-title {
+    @apply font-display text-2xl font-semibold text-terminal-text mb-2;
+  }
+
+  .empty-state-description {
+    @apply text-terminal-text-secondary text-base max-w-md mb-8;
+  }
+
+  /* Terminal suggestion chip */
+  .suggestion-chip {
+    @apply px-4 py-2 font-mono text-sm
+      bg-terminal-surface border border-terminal-border
+      text-terminal-text-secondary hover:text-terminal-text hover:border-terminal-accent hover:bg-terminal-accent-bg
+      rounded-lg cursor-pointer transition-all duration-200;
+  }
+
+  /* Terminal loading skeleton */
+  .skeleton-terminal {
+    @apply bg-terminal-surface-elevated border border-terminal-border rounded
+      animate-pulse;
+  }
+
+  /* Terminal connection indicator */
+  .connection-indicator {
+    @apply inline-flex items-center gap-1.5 font-mono text-xs;
+  }
+
+  .connection-indicator::before {
+    content: '';
+    @apply w-2 h-2 rounded-full;
+  }
+
+  .connection-indicator.connected::before {
+    @apply bg-terminal-success animate-pulse-glow;
+  }
+
+  .connection-indicator.connecting::before {
+    @apply bg-terminal-warning animate-spin;
+  }
+
+  .connection-indicator.disconnected::before {
+    @apply bg-terminal-error;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .animate-in {
+    animation: fade-in var(--transition-base) forwards;
+  }
+
+  .terminal-gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-terminal-accent to-terminal-accent-secondary;
+  }
+
+  .glass-terminal {
+    @apply bg-terminal-surface/80 backdrop-blur-lg border border-terminal-border/50;
+  }
+}
