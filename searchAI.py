@@ -13,8 +13,8 @@ from agno.tools.serpapi import SerpApiTools
 from agno.tools.arxiv import ArxivTools
 from agno.tools.yfinance import YFinanceTools
 from agno.models.google import Gemini
+from agno.models.openrouter import OpenRouter
 from agno.tools.duckduckgo import DuckDuckGoTools
-from agno.tools.googlesearch import GoogleSearchTools
 from agno.tools.hackernews import HackerNewsTools
 from agno.db.sqlite import SqliteDb
 from uuid import uuid4
@@ -25,7 +25,10 @@ import os
 os.makedirs("localdb", exist_ok=True)
 
 # Use a fresh DB file so Agno always creates a correct schema from scratch
-DB_FILE = "localdb/searchAI_v2.db"
+DB_FILE = "localdb/searchAI.db"
+
+# ModelId = "gemini-3.7-flash"
+ModelId = "nvidia/nemotron-3-ultra-550b-a55b:free"
 
 app = FastAPI()
 
@@ -38,12 +41,13 @@ app.add_middleware(
 )
 
 """Models In Use:
+        gemini-3.8-flash
         """
 
 class AgentDetails(BaseModel):  # Fixed class name (PascalCase)
     user_id: int
     session_id: Optional[str] = "0"
-    model: Optional[str] = "gemini-2.0-flash-001" 
+    model: Optional[str] = ModelId
     prompt: str
     best_toggle: Literal[0, 1] = 0 # 0 for false and 1 for true
 
@@ -81,7 +85,8 @@ async def response_retrieval(agent_details: AgentDetails):  # Removed Path()
         # Create agent
         if agent_details.best_toggle == 0:
             agent = Agent(
-                model=Gemini(id=agent_details.model, max_output_tokens=5000, temperature=0.5, top_p=0.3),
+                # model=Gemini(id=agent_details.model, api_key=os.getenv("GOOGLE_API_KEY"), max_output_tokens=5000, temperature=0.5, top_p=0.3),
+                model=OpenRouter(id=ModelId, api_key=os.getenv("OPENROUTER_API_KEY"), max_tokens=5000, temperature=0.5, top_p=0.3),
                 name="SearchAI",
                 instructions=agent_config["searchAI"]["instructions"],
                 description=agent_config["searchAI"]["description"],
@@ -100,14 +105,14 @@ async def response_retrieval(agent_details: AgentDetails):  # Removed Path()
             # **Change logic try making different task agents.**
             reddit_researcher = Agent(
                 name="DuckDuckGoAI",
-                model=Gemini(id="gemini-2.0-flash-001"),
+                model=Gemini(id=ModelId),
                 tools=[DuckDuckGoTools()],
                 add_name_to_context=True, instructions= agent_config["DuckDuckGoAI"]["instructions"], description = agent_config["DuckDuckGoAI"]["description"]
             )
 
             hackernews_researcher = Agent(
                 name="HackerNewsAI",
-                model=Gemini(id="gemini-2.0-flash-001"),
+                model=Gemini(id=ModelId),
                 role="Research a topic on HackerNews.",
                 tools=[HackerNewsTools()],
                 add_name_to_context=True, instructions= agent_config["HackerNewsAI"]["instructions"], description = agent_config["HackerNewsAI"]["description"]
@@ -115,15 +120,15 @@ async def response_retrieval(agent_details: AgentDetails):  # Removed Path()
 
             academic_paper_researcher = Agent(
                 name="GoogleArxivAI",
-                model=Gemini(id="gemini-2.0-flash-001"),
+                model=Gemini(id=ModelId),
                 role="Research academic papers and scholarly content",
-                tools=[GoogleSearchTools(), ArxivTools()],
+                tools=[ArxivTools()],
                 add_name_to_context=True, instructions= agent_config["GoogleArxivAI"]["instructions"], description = agent_config["GoogleArxivAI"]["description"]
             )
 
             twitter_researcher = Agent(
                 name="YFinanceAI",
-                model=Gemini(id="gemini-2.0-flash-001"),
+                model=Gemini(id=ModelId),
                 role="Research trending discussions and real-time updates",
                 tools=[YFinanceTools()],
                 add_name_to_context=True, instructions= agent_config["YFinanceAI"]["instructions"], description = agent_config["YFinanceAI"]["description"]
@@ -131,7 +136,7 @@ async def response_retrieval(agent_details: AgentDetails):  # Removed Path()
 
             SerpAPIAgent = Agent(
                 name="SerpAPIAgent",
-                model=Gemini(id="gemini-2.0-flash-001"),
+                model=Gemini(id=ModelId),
                 role="Research trending discussions and real-time updates",
                 tools=[SerpApiTools(api_key=os.getenv("SERPAPI_API_KEY"))],
                 add_name_to_context=True, instructions= agent_config["SerpAPIAgent"]["instructions"], description = agent_config["SerpAPIAgent"]["description"]
@@ -139,7 +144,7 @@ async def response_retrieval(agent_details: AgentDetails):  # Removed Path()
 
             agent = Team(
                 name="SelectorAI",
-                model=Gemini(id="gemini-2.0-flash-001"),
+                model=Gemini(id=ModelId),
                 members=[
                     reddit_researcher,
                     hackernews_researcher,
@@ -247,7 +252,7 @@ async def websocket_chat(websocket: WebSocket):
             user_id = payload.get("user_id", 1)
             raw_session_id = payload.get("session_id")
             session_id = str(uuid4()) if (not raw_session_id or raw_session_id == "0") else raw_session_id
-            model = payload.get("model", "gemini-2.0-flash-001")
+            model = payload.get("model", ModelId)
             prompt = payload.get("prompt", "")
             best_toggle = payload.get("best_toggle", 0)
 
@@ -255,7 +260,8 @@ async def websocket_chat(websocket: WebSocket):
 
             if best_toggle == 0:
                 agent = Agent(
-                    model=Gemini(id=model, max_output_tokens=5000, temperature=0.5, top_p=0.3),
+                    # model=Gemini(id=model, api_key=os.getenv("GOOGLE_API_KEY"), max_output_tokens=5000, temperature=0.5, top_p=0.3),
+                    model=OpenRouter(id=ModelId, api_key=os.getenv("OPENROUTER_API_KEY"), max_tokens=5000, temperature=0.5, top_p=0.3),
                     name="SearchAI",
                     instructions=agent_config["searchAI"]["instructions"],
                     description=agent_config["searchAI"]["description"],
@@ -291,7 +297,7 @@ async def websocket_chat(websocket: WebSocket):
                     name="GoogleArxivAI",
                     model=Gemini(id="gemini-2.0-flash-001"),
                     role="Research academic papers and scholarly content",
-                    tools=[GoogleSearchTools(), ArxivTools()],
+                    tools=[ ArxivTools()],
                     add_name_to_context=True,
                     instructions=agent_config["GoogleArxivAI"]["instructions"],
                     description=agent_config["GoogleArxivAI"]["description"]
@@ -399,11 +405,12 @@ async def rephraser_v3(userInput: RephraserInput):
     
     try:
         rephraserAgent = Agent(
-            model=Gemini(
-                id="gemini-2.0-flash-001",
-                max_output_tokens=100,
-                temperature=0.1,  # Lowest temperature
-            ),
+            # model=Gemini(
+            #     id=ModelId,
+            #     max_output_tokens=100,
+            #     temperature=0.1,  # Lowest temperature
+            # ),
+            model=OpenRouter(id=ModelId, api_key=os.getenv("OPENROUTER_API_KEY"), max_tokens=100, temperature=0.1),
             system_message=system_message,
             markdown=False,
         )
